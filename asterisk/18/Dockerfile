@@ -106,6 +106,7 @@ RUN	set -x \
 		--enable res_config_sqlite3 \
 		--enable res_config_odbc \
 		--enable res_curl \
+        --enable res_crypto \
 		--enable res_format_attr_h263 \
 		--enable res_format_attr_h264 \
 		--enable res_format_attr_opus \

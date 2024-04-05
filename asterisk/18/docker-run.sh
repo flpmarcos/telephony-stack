@@ -1,0 +1,1 @@
+docker run -d -p 5060:5060/tcp -p 10000-10200:10000-10100/udp -p 8088:8088 -p 8089:8089 -p 5038:5038 -p 5061:5061/tcp --name asterisk-18-deploy-container asterisk-18-deploy
