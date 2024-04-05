@@ -1,0 +1,1 @@
+docker exec -it asterisk-13-deploy-container /bin/bash

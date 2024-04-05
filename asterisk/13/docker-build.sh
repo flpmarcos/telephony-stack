@@ -1,0 +1,1 @@
+docker build -t asterisk-13-deploy .

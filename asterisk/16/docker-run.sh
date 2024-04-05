@@ -1,0 +1,1 @@
+docker run -d -p 5060:5060/tcp -p 10000-10200:10000-10200/udp -p 8088:8088 -p 5038:5038 -p 5061:5061/tcp --name asterisk-16-deploy-container asterisk-16-deploy

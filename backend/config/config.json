@@ -1,0 +1,6 @@
+{
+    "AST_URI":"127.0.0.1",
+    "AST_PORT":5038,
+    "AST_USER":"pbx-user",
+    "AST_PASS":"12345"
+}
