@@ -1,1 +1,1 @@
-docker build -t asterisk-16-deploy .
+docker build -t asterisk-18-10-deploy .

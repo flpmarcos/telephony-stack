@@ -1,4 +1,4 @@
-FROM debian:bookworm
+FROM debian:bullseye
 
 LABEL vendor="Felipe Marcos TI"
 LABEL maintainer="Felipe Marcos <flpmarcos.dev@gmail.com>"
@@ -6,49 +6,78 @@ LABEL maintainer="Felipe Marcos <flpmarcos.dev@gmail.com>"
 ENV TZ=America/Sao_Paulo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 ENV PROJECT_NAME telephony-stack
+ENV ASTERISK_VERSION=18.10.1
+ENV SRTP_VERSION 1.6.0
 
-ENV ASTERISK_VERSION 18.17
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install dependences
-RUN	set -x \
-	&& apt-get update \
-	&& apt-get install -y --no-install-recommends git autoconf automake ca-certificates sendemail libnet-ssleay-perl libio-socket-ssl-perl \
-		build-essential zip unzip libreadline-dev curl libncurses-dev mc aptitude \
-        tcsh scons libboost-dev libboost-all-dev libreadline-dev \
-        libboost-program-options-dev libboost-thread-dev libboost-filesystem-dev \
-        libboost-date-time-dev gcc g++ git make libmongo-client-dev \
-        dh-autoreconf lame sox libzmq3-dev libtiff-tools perl \
-		net-tools tcpdump \
-		subversion libvpb1 uuid-dev apt-utils \
-	&& rm -rf /var/lib/{apt,dpkg,cache,log}/ \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Instale as dependências necessárias
+RUN apt-get update -qq && \
+    DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends \
+            autoconf \
+            file \
+            binutils-dev \
+            build-essential \
+            ca-certificates \
+            curl \
+            less \
+            libcurl4-openssl-dev \
+            libedit-dev \
+            libgsm1-dev \
+            libogg-dev \
+            libpopt-dev \
+            libresample1-dev \
+            libspandsp-dev \
+            libspeex-dev \
+            libspeexdsp-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libvorbis-dev \
+            libxml2-dev \
+            libxslt1-dev \
+            libncurses5 ncurses-bin ncurses-term \
+            portaudio19-dev \
+            procps \
+            python3-pip \
+            python-setuptools \
+            tcpdump \
+            unixodbc-dev \
+            uuid \
+            uuid-dev \
+            vim-tiny \
+            xmlstarlet \
+			wget \
+        && apt-get purge -y --auto-remove && rm -rf /var/lib/apt/lists/*
 
 
 # Install libsrtp
-RUN set -x \
-    && apt-get install -y --no-install-recommends libssl-dev \
-    && wget https://github.com/cisco/libsrtp/archive/v2.4.0.tar.gz \
-    && tar xfv v2.4.0.tar.gz \
-    && cd libsrtp-2.4.0 \
-    && ./configure --prefix=/usr --enable-openssl \
-    && make && make install \
-    && cd .. && rm -rf libsrtp-2.4.0 v2.4.0.tar.gz
+RUN cd /usr/local/src && curl -L -o srtp.tar.gz https://github.com/cisco/libsrtp/archive/v${SRTP_VERSION}.tar.gz \
+    && tar xzf srtp.tar.gz
+RUN cd /usr/local/src/libsrtp* \
+    && ./configure CFLAGS=-fPIC \
+    && make \
+    && make install
 
-# Install asterisk
-RUN	set -x \
-	&& apt-get update \
-	&& apt-get install -y --no-install-recommends git autoconf automake ca-certificates \
-# Download src
-	&& git clone --branch ${ASTERISK_VERSION} --single-branch --depth 1 https://github.com/asterisk/asterisk.git /usr/local/src/asterisk \
-# Install asterisk
-	&& cd /usr/local/src/asterisk \
-	&& yes | contrib/scripts/install_prereq install \
-	&& contrib/scripts/install_prereq test \
-	&& ./bootstrap.sh && ./configure --with-pjproject-bundled \
-	&& make menuselect.makeopts \
-	&& menuselect/menuselect --disable BUILD_NATIVE --disable-all \
+
+# Adicione o usuário asterisk
+RUN useradd --system asterisk
+RUN pip install j2cli
+
+
+
+# Configure o ambiente Asterisk
+RUN mkdir /usr/src/asterisk
+WORKDIR /usr/src/asterisk
+
+ADD http://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${ASTERISK_VERSION}.tar.gz asterisk.tar.gz
+RUN tar --strip-components 1 -xzf asterisk.tar.gz
+# RUN ./contrib/scripts/get_mp3_source.sh
+RUN ./configure --with-pjproject-bundled --with-jansson-bundled --with-crypto --with-ssl
+RUN make menuselect/menuselect menuselect-tree menuselect.makeopts
+
+# disable BUILD_NATIVE to avoid platform issues
+RUN menuselect/menuselect --disable BUILD_NATIVE menuselect.makeopts && \
+    menuselect/menuselect --enable BETTER_BACKTRACES menuselect.makeopts && \
+    menuselect/menuselect --disable BUILD_NATIVE --disable-all \
 		--enable chan_bridge_media \
 		--enable chan_sip \
 		--enable chan_rtp \
@@ -205,56 +234,69 @@ RUN	set -x \
 		--enable CORE-SOUNDS-EN-WAV \
 		--enable CORE-SOUNDS-RU-WAV \
 		--enable EXTRA-SOUNDS-EN-WAV \
-		menuselect.makeopts \
-	&& make all \
-	&& make install \
-	&& make dist-clean \
-	&& make clean \
-# Postinstall
-	&& addgroup --system --gid 1000 asterisk \
-	&& adduser --system --uid 1000 --ingroup asterisk --quiet -home /var/lib/asterisk --no-create-home --disabled-login --gecos "Asterisk PBX daemon" asterisk \
-	&& chown -R asterisk:dialout /var/*/asterisk \
-	&& chmod -R 750 /var/spool/asterisk \
-# Optional packages
-	&& apt-get install -y --no-install-recommends sendemail libnet-ssleay-perl libio-socket-ssl-perl \
-	&& rm -rf /var/lib/apt/lists/* \
-	&& chmod 777 -R /usr/local/sbin/
+		--enable CORE-SOUNDS-EN-ULAW \
+		--enable CORE-SOUNDS-EN-ALAW \
+		--enable CORE-SOUNDS-EN-G722 \
+		--enable CORE-SOUNDS-EN-GSM \
+		--enable CORE-SOUNDS-EN-SLN16 \
+		--enable MOH-OPSOUND-ULAW \
+		--enable MOH-OPSOUND-ALAW \
+		--enable MOH-OPSOUND-G722 \
+		--enable MOH-OPSOUND-GSM \
+		--enable MOH-OPSOUND-SLN16 \
+		--enable EXTRA-SOUNDS-EN-ULAW \
+		--enable EXTRA-SOUNDS-EN-ALAW \
+		--enable EXTRA-SOUNDS-EN-G722 \
+		--enable EXTRA-SOUNDS-EN-GSM \
+		--enable EXTRA-SOUNDS-EN-SLN16 \
+		--enable app_queue \
+        --enable app_agent_pool \
+		menuselect.makeopts
 
-# Ajustando permissões de arquivos e diretórios
-RUN chown -R asterisk:asterisk \
-    /usr/lib/libasterisk* \
-    /usr/lib/asterisk/ \
-    /var/spool/asterisk/ \
-    /var/log/asterisk/ \
-    /usr/sbin/asterisk \
-    /etc/asterisk/
+# Obtenha os sons
+COPY get_sounds.sh get_sounds.sh
+RUN chmod +x get_sounds.sh
+RUN ./get_sounds.sh
 
-# # Instalando o codec Opus
-# RUN cd /usr/src \
-#     && wget -O codec_opus.tar.gz http://downloads.digium.com/pub/telephony/codec_opus/asterisk-${ASTERISK_VERSION}.0/x86-64/codec_opus-${ASTERISK_VERSION}.0_current-x86_64.tar.gz \
-#     && tar -xvzf codec_opus.tar.gz \
-#     && rm -f codec_opus.tar.gz \
-#     && cd codec_opus-${ASTERISK_VERSION}* \
-#     && cp codec_opus.so /usr/lib/asterisk/modules \
-#     && cp format_ogg_opus.so /usr/lib/asterisk/modules \
-#     && cp codec_opus_config-en_US.xml /var/lib/asterisk/documentation/thirdparty \
-#     && rm -fr /usr/src/codec_opus*
 
-# Add basic dialplan
+# Compile o Asterisk
+RUN make all
+
+RUN make install && \
+	make config
+    
+RUN chown -R asterisk:asterisk /var/*/asterisk && \
+    chmod -R 750 /var/spool/asterisk
+
+# Copie as configurações padrão e configure o usuário de execução
+RUN mkdir -p /etc/asterisk/ && \
+    cp /usr/src/asterisk/configs/basic-pbx/*.conf /etc/asterisk/ && \
+    sed -i -E 's/^;(run)(user|group)/\1\2/' /etc/asterisk/asterisk.conf
+
+# Copie o plano de discagem básico
 COPY basic-pbx-dialplan/*.conf /etc/asterisk/
 RUN mkdir -p /var/lib/asterisk/moh/agentes
 
-# Criando o link simbólico para os arquivos de configuração do Asterisk
-RUN mkdir -p /usr/local/etc/
-RUN ln -s /etc/asterisk /usr/local/etc/
+# Defina as permissões da pasta keys
+RUN mkdir -p /etc/asterisk/keys
 
-# EXPOSE 5060/udp 5061/udp 5062/udp
+# Crie uma chave privada e um certificado autoassinado
+RUN openssl genpkey -algorithm RSA -out /etc/asterisk/keys/chave_privada.key && \
+    openssl req -x509 -sha256 -days 365 -key /etc/asterisk/keys/chave_privada.key -out /etc/asterisk/keys/certificado.crt -subj "/CN=asterisk.local/O=Asterisk/C=BR"
+
+RUN chown -R asterisk:asterisk /etc/asterisk/keys && \
+    chmod -R 750 /etc/asterisk/keys && \
+    chown -R asterisk:asterisk /etc/asterisk/keys  && \
+    chmod 640 /etc/asterisk/keys/chave_privada.key
+
+# Exponha as portas necessárias
 EXPOSE 5060/tcp 5061/tcp 10000:10100/udp 8088 5038
 
-STOPSIGNAL SIGTERM
+WORKDIR /home/asterisk
+USER asterisk
 
-WORKDIR /var/lib/asterisk/
-HEALTHCHECK --interval=10s --timeout=10s --retries=3 CMD /usr/sbin/asterisk -rx "core show sysinfo"
+# Execute o Asterisk em primeiro plano
+CMD ["/usr/sbin/asterisk", "-f"]
 
-# And run asterisk in the foreground.
-CMD ["/usr/sbin/asterisk", "-f", "-U", "asterisk", "-G", "asterisk"]
+# Mantenha os arquivos de origem do Asterisk no caso de precisar deles mais tarde
+# Remova-os manualmente se não forem necessários
