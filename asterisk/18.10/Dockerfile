@@ -12,7 +12,7 @@ ENV SRTP_VERSION 2.6.0
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y  build-essential openssl libxml2-dev libncurses5-dev uuid-dev sqlite3 libsqlite3-dev pkg-config libjansson-dev libssl-dev libedit-dev curl msmtp nano
+    apt-get install -y  build-essential openssl libxml2-dev libncurses5-dev uuid-dev sqlite3 libsqlite3-dev pkg-config libjansson-dev libssl-dev libedit-dev curl msmtp nano wget
 
 
 # Install libsrtp
@@ -22,6 +22,8 @@ RUN cd /usr/local/src/libsrtp* \
     && ./configure CFLAGS=-fPIC \
     && make \
     && make install
+
+
 
 # Install Asterisk
 RUN cd /usr/local/src && curl -o asterisk.tar.gz http://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${ASTERISK_VERSION}.tar.gz \
@@ -224,6 +226,16 @@ RUN mkdir -p /var/lib/asterisk/moh/agentes
 RUN mkdir -p /etc/asterisk/keys
 RUN openssl genpkey -algorithm RSA -out /etc/asterisk/keys/chave_privada.key && \
     openssl req -x509 -sha256 -days 365 -key /etc/asterisk/keys/chave_privada.key -out /etc/asterisk/keys/certificado.crt -subj "/CN=asterisk.local/O=Asterisk/C=BR"
+
+
+# Instalação do codec Opus para o Asterisk
+RUN cd ~ \
+&& wget http://downloads.digium.com/pub/telephony/codec_opus/asterisk-18.0/x86-64/codec_opus-18.0_current-x86_64.tar.gz \
+&& tar -zxf codec_opus-18.0_current-x86_64.tar.gz \
+&& cd codec_opus-18.0_1.3.0-x86_64 \
+&& cp codec_opus.so /usr/lib/asterisk/modules/ \
+&& cp format_ogg_opus.so /usr/lib/asterisk/modules/ \
+&& cp codec_opus_config-en_US.xml /var/lib/asterisk/documentation/
 
 
 # Expoe as portas necessárias
